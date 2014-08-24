@@ -109,33 +109,23 @@ class Nrf():
   #define DPL_P4      4
   #define DPL_P5      5
 
-  # Instruction Mnemonics
-  #define R_REGISTER    0x00 /* last 4 bits will indicate reg. address */
-  #define W_REGISTER    0x20 /* last 4 bits will indicate reg. address */
-  #define REGISTER_MASK 0x1F
-  #define R_RX_PAYLOAD  0x61
-  #define W_TX_PAYLOAD  0xA0
-  #define FLUSH_TX      0xE1
-  #define FLUSH_RX      0xE2
-  #define REUSE_TX_PL   0xE3
-  #define ACTIVATE      0x50
-  #define R_RX_PL_WID   0x60
-  #define NOP           0xFF
+  # Feature register bits
+  BIT_EN_DPL          = 2
+  BIT_EN_ACK_PAY      = 1
+  BIT_EN_DYN_ACK      = 0
+
 
   REGISTER_MASK           = 0x1F
 
 
-  def __init__(self, spiDevice="/dev/spidev32766.0", cdPinId='J4.26', crcScheme = 0):
+  def __init__(self, payloadLength=None, spiDevice="/dev/spidev32766.0", cdPinId='J4.26', crcScheme = 0):
     self.cePin = Pin(cdPinId,'OUTPUT')
     self.cePin.low()
     self.spibus = Spibus(device=spiDevice, readMode=struct.pack('I',0), writeMode=struct.pack('I',0))
+    self.nrf24_writeRegister(self.REG_FEATURE, ((1 if self.payloadLength else 0) << self.BIT_EN_DPL | 1<<self.BIT_EN_ACK_PAY | 0<<self.BIT_EN_DYN_ACK))
 
   def readRegister(self, register, size=1):
-    self.spibus.write_buffer[0] = chr(self.CMD_R_REGISTER | (self.REGISTER_MASK & register))
-    self.spibus.write_buffer[1] = chr(0)
-    self.spibus.send(size+1)
-
-    return (ord(self.spibus.read_buffer[idx]) for idx in range(1,size+1))
+    return self.command(chr(self.CMD_R_REGISTER | (self.REGISTER_MASK & register)), size)
 
   def nrf24_writeRegister(self, register, data):
     self.spibus.write_buffer[0] = chr(self.W_REGISTER | (self.REGISTER_MASK & register))
@@ -144,9 +134,12 @@ class Nrf():
       self.spibus.write_buffer[idx+1] = chr(dataList[idx])
     self.spibus.send(len(dataList+1))
 
-  def doCommand(self, command):
-    self.spibus.write_buffer[0] = chr(command)
-    self.spibus.send(1)
+  def command(self, commandBits, returnSize = 0):
+    self.spibus.write_buffer[0] = chr(commandBits)
+    self.spibus.write_buffer[1] = chr(0)
+    self.spibus.send(1+returnSize)
+    if returnSize > 0:
+      return (ord(self.spibus.read_buffer[idx]) for idx in range(1,returnSize+1))
 
   def powerUpTx(self):
     self.nrf24_writeRegister(self.REG_STATUS,(1<<self.BIT_RX_DR)|(1<<self.BOT_TX_DS)|(1<<self.BIT_MAX_RT));
@@ -156,9 +149,18 @@ class Nrf():
   def send(self, data):
     self.cePin.low()
     self.powerUpTx()
-    self.doCommand(self.CMD_FLUSH_TX)
+    self.command(self.CMD_FLUSH_TX)
     for idx in len(data):
       self.spibus.write_buffer[len(data)-idx-1] = chr(data[idx])
     self.spibus.send(len(data))
     self.cePin.high()
 
+  def status(self):
+    return self.command(self.CMD_NOP, 1)
+
+  def hasReceivedData(self):
+    return self.status & 1 << self.BIT_RX_DR > 0
+
+  def getReceivedData(self):
+    dataSize = self.payloadLength if self.payloadLength else self.command(self.CMD_R_RX_PL_WID, 1)
+    return self.command(self.CMD_R_RX_PAYLOAD, dataSize)
