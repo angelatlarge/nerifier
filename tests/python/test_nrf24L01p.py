@@ -2,28 +2,37 @@
 
 import unittest
 from nrf24L01p import Nrf
-from mock import MagicMock
+from mock import MagicMock, call
 
 class TestNrf(unittest.TestCase):
 
   def setUp(self):
     self.seq = range(10)
+    self.mockSpibus = MagicMock()
+    self.nrf = Nrf(self.mockSpibus)
 
   def testInitilizeRegister(self):
-    spibus = MagicMock()
-    nrf = Nrf(spibus)
+    pass
 
+  def doRegisterWriteTest(self, registerAddress, registerData):
+    self.mockSpibus.reset_mock()
+    self.nrf.writeRegister(registerAddress, registerData)
+
+    regAddressCall = call(0, registerAddress)
+    dataCalls = []
+    registerData = registerData if hasattr(registerData, "__len__") else [registerData]
+    for i in range(len(registerData)):
+      datum = registerData[i]
+      index = len(registerData) - i
+      dataCalls.append(call(index, datum))
+
+    self.mockSpibus.write_buffer.__setitem__.called_with([regAddressCall] + dataCalls)
+    self.mockSpibus.send.assert_called_with(len(registerData)+1)
 
   def testWriteRegister(self):
-    spibus = MagicMock()
-    nrf = Nrf(spibus)
-    nrf.writeRegister(0x01, [0x02, 0x03])
+    self.doRegisterWriteTest(0x04, 0x05)
+    self.doRegisterWriteTest(0x01, [0x02, 0x03])
 
-    spibus.write_buffer.assert_called_with()
-    spibus.send.assert_called_with(3)
-    print spibus.send.call_args_list
-    print spibus.write_buffer.call_args_list
-    print spibus.mock_calls
 
 if __name__ == '__main__':
   unittest.main()
