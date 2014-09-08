@@ -107,6 +107,7 @@ RX_FIFO_EMPTY           = Bits.RX_P_NO_MASK
 
 
 def printBinary(addr):
+  addr = addr if isinstance(addr, list) else [addr]
   return " ".join(("%0X" % byte for byte in addr))
 
 
@@ -114,9 +115,9 @@ class Nrf():
   
   def __init__(
       self,
+      spiBus = None,
       addressWidth = 5,
       recAddrPlsize = (0x25, None),
-      spiDevice="/dev/spidev32766.0",
       cePinId='J4.26',
       channel = 2,
       speed = 0,
@@ -138,7 +139,7 @@ class Nrf():
     self.cePin.low()  # Xmit off
 
     # Initialize the SPI bus
-    self.spibus = Spibus(device=spiDevice, readMode=struct.pack('I',0), writeMode=struct.pack('I',0))
+    self.spibus = Spibus(device="/dev/spidev32766.0", readMode=struct.pack('I',0), writeMode=struct.pack('I',0)) if spiBus == None else spiBus
 
     # Set address width: convert as follows 3->1, 4->2, 5>3
     self.addressWidth = min(5, addressWidth)
@@ -181,7 +182,7 @@ class Nrf():
         autoAckValue |= 1<<idx
 
         # Set receive address
-        print "Retting recieve address for pipe %d to %s" % (idx, printBinary(addr))
+        print "Setting recieve address for pipe %d to %s" % (idx, printBinary(addr))
         self.writeRegister(Reg.RX_ADDR_P0+idx, addr)
 
         # Set payload size
@@ -190,7 +191,7 @@ class Nrf():
           print "Setting payload size %d for pipe %d" % (writtenSize, idx)
           self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
         else:
-          print "Using dynamic payload size for pipe %d" % (writtenSize, idx)
+          print "Using dynamic payload size for pipe %d" % (idx)
           dynamicPayloadSizePipes |= 1<<idx
 
       # Write dynamic payload size
