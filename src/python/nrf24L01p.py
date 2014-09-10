@@ -2,6 +2,7 @@ import struct
 import random
 from spibus import Spibus
 from ablib import Pin
+from time import sleep
 
 # Commands
 class Cmd:
@@ -112,7 +113,15 @@ def printBinary(addr):
 
 
 class Nrf():
-  
+
+  """
+    addressWidth        the number of bytes used for the address. Legal values are 3, 4, and 5
+    recAddrPayload      Tuple (or a list of tuples up to 6 elements long) of receiver address and payload size
+    spiDevice           Path to the device on your system
+    cdPinId             Name of the GPIO pin connected to the CE pin of NRF24L01 plus
+    crcScheme
+    autoRetransmitBits
+  """
   def __init__(
       self,
       spiBus = None,
@@ -125,38 +134,42 @@ class Nrf():
       autoRetransmitDelay = random.randrange(16),
       crcScheme = 0
   ):
-    """
-      addressWidth        the number of bytes used for the address. Legal values are 3, 4, and 5
-      recAddrPayload      Tuple (or a list of tuples up to 6 elements long) of receiver address and payload size
-      spiDevice           Path to the device on your system
-      cdPinId             Name of the GPIO pin connected to the CE pin of NRF24L01 plus
-      crcScheme
-      autoRetransmitBits
-    """
     self.cePin = Pin(cePinId,'OUTPUT')
 
 
     self.cePin.low()  # Xmit off
 
+    print("Sleeping for one sec..."),
+    sleep(1)
+    print("done")
+
     # Initialize the SPI bus
     self.spibus = Spibus(device="/dev/spidev32766.0", readMode=struct.pack('I',0), writeMode=struct.pack('I',0)) if spiBus == None else spiBus
 
+    # Power up the chip, put it into TX mode
+    self.writeRegister(Reg.CONFIG, 1<<Bits.PWR_UP)
+
     # Set address width: convert as follows 3->1, 4->2, 5>3
-    self.addressWidth = min(5, addressWidth)
+    self.addressWidth = max(min(5, addressWidth), 3)
     self.writeRegister(Reg.SETUP_AW, self.addressWidth - 2)
 
     # Set up the CRC scheme
-    self.crcBits = 0 if not crcScheme else 1<<Bits.EN_CRC | (min(crcScheme, 1) << Bits.CRCO)
+    self.crcBits = 0 if crcScheme==None else 1<<Bits.EN_CRC | (min(crcScheme, 1) << Bits.CRCO)
 
     # Set up auto retransmit delay and count
-    self.writeRegister(Reg.SETUP_RETR, min(autoRetransmitDelay, 15) << 4 | min(autoRetransmitCount, 15))
+    # self.writeRegister(Reg.SETUP_RETR, min(autoRetransmitDelay, 15) << 4 | min(autoRetransmitCount, 15))
+    self.writeRegister(Reg.SETUP_RETR, 0xFF)
 
     # Set up the channel
-    self.writeRegister(Reg.RF_CH, min(63, channel))
+    channel = min(0x7F, channel)
+    print( "Writing %02x as the channel" % (channel) )
+    self.writeRegister(Reg.RF_CH, channel)
 
     # Set up the speed
-    self.writeRegister(Reg.RF_SETUP, 0x03 << 1)
-    # self.writeRegister(Reg.RF_SETUP, 0x26)
+    # self.writeRegister(Reg.RF_SETUP, 0x03 << 1)
+    # self.writeRegister(Reg.RF_SETUP, 0x15)
+    # self.writeRegister(Reg.RF_SETUP, 0x06)
+    self.writeRegister(Reg.RF_SETUP, 0x26)
 
 
     # set up payload sizes
@@ -167,7 +180,7 @@ class Nrf():
 
       # Enable dynamic payload if necessary
       dynamicPayloadSizeBit = 1 if any([not size for (addr, size) in self.recAddrPayload]) else 0
-      self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL | 1<<Bits.EN_ACK_PAY | 0<<Bits.EN_DYN_ACK))
+      # self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL | 1<<Bits.EN_ACK_PAY | 0<<Bits.EN_DYN_ACK))
 
       # Set payload sizes
       pipesEnableValue = 0
@@ -195,22 +208,26 @@ class Nrf():
           dynamicPayloadSizePipes |= 1<<idx
 
       # Write dynamic payload size
+      print( "Writing %02x into DYNPD" % (dynamicPayloadSizePipes) )
       self.writeRegister(Reg.DYNPD, dynamicPayloadSizePipes)
 
       # Write pipes enable
+      pipesEnableValue = 3
+      print( "Writing %02x into EN_RXADDR" % (pipesEnableValue) )
       self.writeRegister(Reg.EN_RXADDR, pipesEnableValue)
 
       # Write auto-acking
       self.writeRegister(Reg.EN_AA, autoAckValue)
 
-    self.writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<Bits.TX_DS)|(1<<Bits.MAX_RT));
-    # Default receive mode
+    self.writeRegister(Reg.EN_AA, 0x3F)
+
+    # Set to receive mode
     self.writeRegister(Reg.CONFIG, self.crcBits|((1<<Bits.PWR_UP)|(1<<Bits.PRIM_RX)));
 
-    self.cePin.high() # ???
+    self.cePin.high() # Necessary for RX mode
 
   def readRegister(self, register, size=1):
-    return self.command(chr(Cmd.R_REGISTER | (REGISTER_MASK & register)), size)
+    return self.command(Cmd.R_REGISTER | (REGISTER_MASK & register), size)
 
   def writeRegister(self, register, data):
     self.spibus.write_buffer[0] = chr(Cmd.W_REGISTER | (REGISTER_MASK & register))
@@ -224,7 +241,8 @@ class Nrf():
     self.spibus.write_buffer[1] = chr(0)
     self.spibus.send(1+returnSize)
     if returnSize > 0:
-      return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
+      # return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
+      return (ord(self.spibus.read_buffer[idx+1]) for idx in range(returnSize))
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
@@ -250,13 +268,21 @@ class Nrf():
 
   def read(self):
     if self.recAddrPayload:
-      availablePipeIndex = self.status() & Bits.RX_P_NO_MASK
-      if (availablePipeIndex != RX_FIFO_EMPTY):
-        availablePipeIndex >>= 1;
-        if availablePipeIndex>=len(self.recAddrPayload):
-          raise Exception("Invalid availablePipeIndex %d", availablePipeIndex)
-        payloadSize = self.recAddrPayload[availablePipeIndex][1];
-        payloadSize = payloadSize if payloadSize else self.command(Cmd.R_RX_PL_WID, 1).next()
-        data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
-        return (availablePipeIndex, data)
-    return None
+      if self.status() & 1<<Bits.RX_DR:
+        availablePipeIndex = self.status() & Bits.RX_P_NO_MASK
+        if (availablePipeIndex != RX_FIFO_EMPTY):
+          availablePipeIndex >>= 1;
+          if availablePipeIndex>=len(self.recAddrPayload):
+            raise Exception("Invalid availablePipeIndex %d", availablePipeIndex)
+          payloadSize = self.recAddrPayload[availablePipeIndex][1];
+          payloadSize = payloadSize if payloadSize else self.command(Cmd.R_RX_PL_WID, 1).next()
+          data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
+          self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
+          return (availablePipeIndex, data)
+        else:
+          print "Nrf told us there would be data, but could not read it"
+      else:
+        # No data available
+        return None
+    else:
+      raise Exception("self.recAddrPayload misconfigured. Cannot read")
