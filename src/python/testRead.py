@@ -26,7 +26,10 @@ def main():
   sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
   # nrf = Nrf(recAddrPlsize=([0xDE, 0xAD, 0xBE, 0xEF, 0xAE], 4), channel=0x7A)
-  nrf = Nrf(recAddrPlsize=([0xAE, 0xEF, 0xBE, 0xAD, 0xDE], 4), channel=channelNum)
+  # nrf = Nrf(recAddrPlsize=([0xAE, 0xEF, 0xBE, 0xAD, 0xDE], 4), channel=channelNum)
+  # nrf = Nrf(recAddrPlsize=([0xAE, 0xEF, 0xBE, 0x34, 0x12], 4), channel=channelNum)
+  # nrf = Nrf(recAddrPlsize=([0x12, 0x34, 0x56, 0x78, 0x9A], 4))
+  nrf = Nrf(recAddrPlsize=([0x9A, 0x78, 0x56, 0x34, 0x12], 4))
   printRegisterMap()
 
   # while still waiting for input on at least one file
@@ -44,14 +47,23 @@ def main():
           read_list.remove(file)
         else:
           input = line.rstrip().lower()
-          if input == "c":
-            print "Rewriting channel..."
-            nrf.writeRegister(Reg.RF_CH, channelNum)
-          elif input == "x":
-            print "Clearing STATUS..."
-            nrf.writeRegister(Reg.STATUS, 0x7F)
-          else:
+          words = input.split()
+          try:
+            if words[0] == "c":
+              try:
+                channelNum = int(words[1])
+              except IndexError:
+                pass
+              print "Setting channel to %d..." % (channelNum)
+              nrf.writeRegister(Reg.RF_CH, channelNum)
+            elif input == "x":
+              print "Clearing STATUS..."
+              nrf.writeRegister(Reg.STATUS, 0x7F)
+            else:
+              printRegisterMap()
+          except IndexError:
             printRegisterMap()
+
           print "Waiting for input..."
 
 def readPrintOutput():

@@ -169,7 +169,8 @@ class Nrf():
     # self.writeRegister(Reg.RF_SETUP, 0x03 << 1)
     # self.writeRegister(Reg.RF_SETUP, 0x15)
     # self.writeRegister(Reg.RF_SETUP, 0x06)
-    self.writeRegister(Reg.RF_SETUP, 0x26)
+    # self.writeRegister(Reg.RF_SETUP, 0x26)
+    self.writeRegister(Reg.RF_SETUP, 0x0E)
 
 
     # set up payload sizes
@@ -238,7 +239,8 @@ class Nrf():
 
   def command(self, commandBits, returnSize = 0):
     self.spibus.write_buffer[0] = chr(commandBits)
-    self.spibus.write_buffer[1] = chr(0)
+    for i in range(1, returnSize):
+      self.spibus.write_buffer[i] = chr(0)
     self.spibus.send(1+returnSize)
     if returnSize > 0:
       # return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
@@ -266,21 +268,29 @@ class Nrf():
     self.spibus.send(1)
     return (ord(self.spibus.read_buffer[0]))
 
+
+  def dataReceivedPipeIndex(self, status):
+    availablePipeIndex = status & Bits.RX_P_NO_MASK
+    if (availablePipeIndex != RX_FIFO_EMPTY):
+      return availablePipeIndex >> 1;
+    else:
+      return None
+
+
   def read(self):
     if self.recAddrPayload:
-      if self.status() & 1<<Bits.RX_DR:
-        availablePipeIndex = self.status() & Bits.RX_P_NO_MASK
-        if (availablePipeIndex != RX_FIFO_EMPTY):
-          availablePipeIndex >>= 1;
-          if availablePipeIndex>=len(self.recAddrPayload):
-            raise Exception("Invalid availablePipeIndex %d", availablePipeIndex)
-          payloadSize = self.recAddrPayload[availablePipeIndex][1];
-          payloadSize = payloadSize if payloadSize else self.command(Cmd.R_RX_PL_WID, 1).next()
-          data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
-          self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
-          return (availablePipeIndex, data)
-        else:
+      status = self.status()
+      idxPipe = self.dataReceivedPipeIndex(status)
+      if (status & (1<<Bits.RX_DR)) or idxPipe != None:
+        if idxPipe == None:
           print "Nrf told us there would be data, but could not read it"
+        if idxPipe>=len(self.recAddrPayload):
+          raise Exception("Invalid availablePipeIndex %d", idxPipe)
+        payloadSize = self.recAddrPayload[idxPipe][1];
+        payloadSize = payloadSize if payloadSize else self.command(Cmd.R_RX_PL_WID, 1).next()
+        data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
+        self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
+        return (idxPipe, data)
       else:
         # No data available
         return None
