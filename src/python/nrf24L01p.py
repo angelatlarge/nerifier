@@ -111,6 +111,18 @@ def printBinary(addr):
   addr = addr if isinstance(addr, list) else [addr]
   return " ".join(("%0X" % byte for byte in addr))
 
+class NrfPipe():
+  def __init__(self, address, payloadSize = None):
+    self._address = address
+    self._payloadSize = payloadSize
+
+  @property
+  def address(self):
+    return self._address
+
+  @property
+  def payloadSize(self):
+    return self._payloadSize
 
 class Nrf():
 
@@ -180,14 +192,15 @@ class Nrf():
       self.recAddrPayload = recAddrPlsize[0:6] if isinstance(recAddrPlsize, list) else [recAddrPlsize]
 
       # Enable dynamic payload if necessary
-      dynamicPayloadSizeBit = 1 if any([not size for (addr, size) in self.recAddrPayload]) else 0
+      print self.recAddrPayload
+      dynamicPayloadSizeBit = 1 if any([not pipe.payloadSize for pipe in self.recAddrPayload]) else 0
       # self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL | 1<<Bits.EN_ACK_PAY | 0<<Bits.EN_DYN_ACK))
 
       # Set payload sizes
       pipesEnableValue = 0
       autoAckValue = 0
       dynamicPayloadSizePipes = 0
-      for idx,(addr, size) in enumerate(self.recAddrPayload):
+      for idx, pipe in enumerate(self.recAddrPayload):
         # Enable pipe
         print "Enabling pipe %d" % (idx)
         pipesEnableValue |= 1<<idx
@@ -196,12 +209,12 @@ class Nrf():
         autoAckValue |= 1<<idx
 
         # Set receive address
-        print "Setting recieve address for pipe %d to %s" % (idx, printBinary(addr))
-        self.writeRegister(Reg.RX_ADDR_P0+idx, addr)
+        print "Setting recieve address for pipe %d to %s" % (idx, printBinary(pipe.address))
+        self.writeRegister(Reg.RX_ADDR_P0+idx, pipe.address)
 
         # Set payload size
-        if size:
-          writtenSize = max(1, min(size, 32))
+        if pipe.payloadSize:
+          writtenSize = max(1, min(pipe.payloadSize, 32))
           print "Setting payload size %d for pipe %d" % (writtenSize, idx)
           self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
         else:
@@ -244,7 +257,7 @@ class Nrf():
     self.spibus.send(1+returnSize)
     if returnSize > 0:
       # return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
-      return (ord(self.spibus.read_buffer[idx+1]) for idx in range(returnSize))
+      return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
@@ -286,8 +299,15 @@ class Nrf():
           print "Nrf told us there would be data, but could not read it"
         if idxPipe>=len(self.recAddrPayload):
           raise Exception("Invalid availablePipeIndex %d", idxPipe)
-        payloadSize = self.recAddrPayload[idxPipe][1];
-        payloadSize = payloadSize if payloadSize else self.command(Cmd.R_RX_PL_WID, 1).next()
+        print self.recAddrPayload
+        pipe = self.recAddrPayload[idxPipe]
+        payloadSize = pipe.payloadSize;
+        print "Payload size is ", payloadSize
+        if not payloadSize:
+          print "Dynamic payload size"
+          payloadSizeCmdOut = list(self.command(Cmd.R_RX_PL_WID, 1))
+          print "Got ", payloadSizeCmdOut
+          payloadSize = payloadSizeCmdOut[0]
         data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
         self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
         return (idxPipe, data)
