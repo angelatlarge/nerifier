@@ -112,7 +112,7 @@ def printBinary(addr):
   return " ".join(("%0X" % byte for byte in addr))
 
 class NrfPipe():
-  def __init__(self, address, payloadSize = None):
+  def __init__(self, address = None, payloadSize = None):
     self._address = address
     self._payloadSize = payloadSize
 
@@ -123,6 +123,11 @@ class NrfPipe():
   @property
   def payloadSize(self):
     return self._payloadSize
+
+  def __str__(self):
+    return "NrfPipe(address=%s, payloadSize=%s)" % (self._address, self._payloadSize)
+
+  __repr__ = __str__
 
 class Nrf():
 
@@ -138,7 +143,7 @@ class Nrf():
       self,
       spiBus = None,
       addressWidth = 5,
-      recAddrPlsize = (0x25, None),
+      recAddrPlsize = [NrfPipe(None, 4)],
       cePinId='J4.26',
       channel = 2,
       speed = 0,
@@ -186,6 +191,7 @@ class Nrf():
 
 
     # set up payload sizes
+    print recAddrPlsize
     if recAddrPlsize:
 
       # Convert recAddrPayload into a list
@@ -193,7 +199,7 @@ class Nrf():
 
       # Enable dynamic payload if necessary
       print self.recAddrPayload
-      dynamicPayloadSizeBit = 1 if any([not pipe.payloadSize for pipe in self.recAddrPayload]) else 0
+      dynamicPayloadSizeBit = 1 if any([not pipe.payloadSize for pipe in self.recAddrPayload if pipe]) else 0
       print( "Writing %02x into FEATURE" % (dynamicPayloadSizeBit << Bits.EN_DPL) )
       self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL))
 
@@ -202,25 +208,31 @@ class Nrf():
       autoAckValue = 0
       dynamicPayloadSizePipes = 0
       for idx, pipe in enumerate(self.recAddrPayload):
-        # Enable pipe
-        print "Enabling pipe %d" % (idx)
-        pipesEnableValue |= 1<<idx
-
-        # Enable auto ack
-        autoAckValue |= 1<<idx
-
-        # Set receive address
-        print "Setting recieve address for pipe %d to %s" % (idx, printBinary(pipe.address))
-        self.writeRegister(Reg.RX_ADDR_P0+idx, pipe.address)
-
-        # Set payload size
-        if pipe.payloadSize:
-          writtenSize = max(1, min(pipe.payloadSize, 32))
-          print "Setting payload size %d for pipe %d" % (writtenSize, idx)
-          self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
+        if pipe==None:
+          print "Pipe %d disabled" % (idx)
         else:
-          print "Using dynamic payload size for pipe %d" % (idx)
-          dynamicPayloadSizePipes |= 1<<idx
+          # Enable pipe
+          print "Enabling pipe %d" % (idx)
+          pipesEnableValue |= 1<<idx
+
+          # Enable auto ack
+          autoAckValue |= 1<<idx
+
+          # Set receive address
+          if pipe.address:
+            print "Setting recieve address for pipe %d to %s" % (idx, printBinary(pipe.address))
+            self.writeRegister(Reg.RX_ADDR_P0+idx, pipe.address)
+          else:
+            print "Pipe address for this pipe remains default"
+
+          # Set payload size
+          if pipe.payloadSize:
+            writtenSize = max(1, min(pipe.payloadSize, 32))
+            print "Setting payload size %d for pipe %d" % (writtenSize, idx)
+            self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
+          else:
+            print "Using dynamic payload size for pipe %d" % (idx)
+            dynamicPayloadSizePipes |= 1<<idx
 
       # Write dynamic payload size
       print( "Writing %02x into DYNPD" % (dynamicPayloadSizePipes) )
@@ -253,11 +265,15 @@ class Nrf():
 
   def command(self, commandBits, returnSize = 0):
     self.spibus.write_buffer[0] = chr(commandBits)
-    for i in range(1, returnSize):
-      self.spibus.write_buffer[i] = chr(0)
+
+    # Testing initialization
+    for i in range(returnSize+1):
+      self.spibus.read_buffer[i] = chr(0xFF)
+
     self.spibus.send(1+returnSize)
     if returnSize > 0:
       # return (ord(self.spibus.read_buffer[idx+1]) for idx in range(returnSize))
+      # return (ord(self.spibus.read_buffer[idx]) for idx in range(returnSize))
       return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
 
   def powerUpTx(self):
@@ -298,16 +314,16 @@ class Nrf():
       if (status & (1<<Bits.RX_DR)) or idxPipe != None:
         try:
           if idxPipe == None:
-            raise Exception("Nrf told us there would be data, but could got invalid pipe index")
+            self.writeRegister(Reg.STATUS, 1<<Bits.RX_DR|1<<Bits.TX_DS|1<<Bits.MASK_MAX_RT)
+            raise Exception("Nrf told us there would be data, but could got no pipe index, clearing status")
           if idxPipe>=len(self.recAddrPayload):
             raise Exception("Invalid availablePipeIndex %d", idxPipe)
           pipe = self.recAddrPayload[idxPipe]
-          payloadSize = pipe.payloadSize;
+          payloadSize = pipe.payloadSize
           print "Specified payload size is ", payloadSize
           if not payloadSize:
-            print "Dynamic payload size"
             payloadSizeCmdOut = list(self.command(Cmd.R_RX_PL_WID, 1))
-            print "Payload size=", payloadSizeCmdOut
+            print "Dynamic payload size=", payloadSizeCmdOut
             payloadSize = payloadSizeCmdOut[0]
           if (payloadSize) > 32:
             print "Corrupt data in buffer, flushing"
@@ -315,6 +331,7 @@ class Nrf():
             self.command(Cmd.FLUSH_RX)
             return None
           else:
+            # Reading payload
             data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
             self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
             return (idxPipe, data)
