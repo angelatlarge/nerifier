@@ -233,6 +233,9 @@ class Nrf():
           else:
             print "Using dynamic payload size for pipe %d" % (idx)
             dynamicPayloadSizePipes |= 1<<idx
+            writtenSize = 1
+            print "Writing %d to payload size register for pipe %d" % (writtenSize, idx)
+            self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
 
       # Write dynamic payload size
       print( "Writing %02x into DYNPD" % (dynamicPayloadSizePipes) )
@@ -274,7 +277,9 @@ class Nrf():
     if returnSize > 0:
       # return (ord(self.spibus.read_buffer[idx+1]) for idx in range(returnSize))
       # return (ord(self.spibus.read_buffer[idx]) for idx in range(returnSize))
-      return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
+      # for idx in range(returnSize):
+      # Don't want to use iterators here, because the buffer will get overwritten
+      return [ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize)]
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
@@ -315,7 +320,7 @@ class Nrf():
         try:
           if idxPipe == None:
             self.writeRegister(Reg.STATUS, 1<<Bits.RX_DR|1<<Bits.TX_DS|1<<Bits.MASK_MAX_RT)
-            raise Exception("Nrf told us there would be data, but could got no pipe index, clearing status")
+            raise Exception("Nrf told us there would be data, but got no pipe index, clearing status")
           if idxPipe>=len(self.recAddrPayload):
             raise Exception("Invalid availablePipeIndex %d", idxPipe)
           pipe = self.recAddrPayload[idxPipe]
