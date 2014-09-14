@@ -194,7 +194,8 @@ class Nrf():
       # Enable dynamic payload if necessary
       print self.recAddrPayload
       dynamicPayloadSizeBit = 1 if any([not pipe.payloadSize for pipe in self.recAddrPayload]) else 0
-      # self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL | 1<<Bits.EN_ACK_PAY | 0<<Bits.EN_DYN_ACK))
+      print( "Writing %02x into FEATURE" % (dynamicPayloadSizeBit << Bits.EN_DPL) )
+      self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL))
 
       # Set payload sizes
       pipesEnableValue = 0
@@ -256,7 +257,7 @@ class Nrf():
       self.spibus.write_buffer[i] = chr(0)
     self.spibus.send(1+returnSize)
     if returnSize > 0:
-      # return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
+      # return (ord(self.spibus.read_buffer[idx+1]) for idx in range(returnSize))
       return (ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize))
 
   def powerUpTx(self):
@@ -295,22 +296,30 @@ class Nrf():
       status = self.status()
       idxPipe = self.dataReceivedPipeIndex(status)
       if (status & (1<<Bits.RX_DR)) or idxPipe != None:
-        if idxPipe == None:
-          print "Nrf told us there would be data, but could not read it"
-        if idxPipe>=len(self.recAddrPayload):
-          raise Exception("Invalid availablePipeIndex %d", idxPipe)
-        print self.recAddrPayload
-        pipe = self.recAddrPayload[idxPipe]
-        payloadSize = pipe.payloadSize;
-        print "Payload size is ", payloadSize
-        if not payloadSize:
-          print "Dynamic payload size"
-          payloadSizeCmdOut = list(self.command(Cmd.R_RX_PL_WID, 1))
-          print "Got ", payloadSizeCmdOut
-          payloadSize = payloadSizeCmdOut[0]
-        data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
-        self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
-        return (idxPipe, data)
+        try:
+          if idxPipe == None:
+            raise Exception("Nrf told us there would be data, but could got invalid pipe index")
+          if idxPipe>=len(self.recAddrPayload):
+            raise Exception("Invalid availablePipeIndex %d", idxPipe)
+          pipe = self.recAddrPayload[idxPipe]
+          payloadSize = pipe.payloadSize;
+          print "Specified payload size is ", payloadSize
+          if not payloadSize:
+            print "Dynamic payload size"
+            payloadSizeCmdOut = list(self.command(Cmd.R_RX_PL_WID, 1))
+            print "Payload size=", payloadSizeCmdOut
+            payloadSize = payloadSizeCmdOut[0]
+          if (payloadSize) > 32:
+            print "Corrupt data in buffer, flushing"
+            # Corrupt packet due to data overflow
+            self.command(Cmd.FLUSH_RX)
+            return None
+          else:
+            data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
+            self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
+            return (idxPipe, data)
+        except Exception as e:
+          print str(e)
       else:
         # No data available
         return None

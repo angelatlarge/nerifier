@@ -101,7 +101,7 @@ class Reader:
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('-c', '--channel', default=0x30)
+  parser.add_argument('-c', '--channel', default=0x04)
   r = Reader(parser.parse_args())
   r.run()
 
