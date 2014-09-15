@@ -275,11 +275,16 @@ class Nrf():
 
     self.spibus.send(1+returnSize)
     if returnSize > 0:
-      # return (ord(self.spibus.read_buffer[idx+1]) for idx in range(returnSize))
-      # return (ord(self.spibus.read_buffer[idx]) for idx in range(returnSize))
-      # for idx in range(returnSize):
       # Don't want to use iterators here, because the buffer will get overwritten
-      return [ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize)]
+
+      # This converts the string to bytes
+      # return [ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize)]
+
+      # THis retuens a list of chars?
+      # return [self.spibus.read_buffer[returnSize-idx] for idx in range(returnSize)]
+
+      return self.spibus.read_buffer[returnSize:0:-1]
+
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
@@ -327,9 +332,9 @@ class Nrf():
           payloadSize = pipe.payloadSize
           print "Specified payload size is ", payloadSize
           if not payloadSize:
-            payloadSizeCmdOut = list(self.command(Cmd.R_RX_PL_WID, 1))
-            print "Dynamic payload size=", payloadSizeCmdOut
-            payloadSize = payloadSizeCmdOut[0]
+            payloadSizeCmdOut = self.command(Cmd.R_RX_PL_WID, 1)
+            print "Dynamic payload size=", ord(payloadSizeCmdOut[0])
+            payloadSize = ord(payloadSizeCmdOut[0])
           if (payloadSize) > 32:
             print "Corrupt data in buffer, flushing"
             # Corrupt packet due to data overflow

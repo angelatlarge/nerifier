@@ -5,7 +5,15 @@ from nrf24L01p import Nrf, Reg, Cmd, NrfPipe
 import select
 import argparse
 import nrf_args
+from struct import *
+import traceback
+import socket
+import time
 
+
+CARBON_SERVER = 'ec2-54-165-149-202.compute-1.amazonaws.com'
+CARBON_PORT = 2003
+graphite_paths = { 0xA0: "breadboard.lightsensor.1"}
 
 class Reader:
   def __init__(self, args):
@@ -85,9 +93,9 @@ class Reader:
     for regIdx in range(0, Reg.FEATURE+1):
       registerSize = 5 if regIdx in range(Reg.RX_ADDR_P0, Reg.RX_ADDR_P5 + 1) else 1
       registerData = list(self.nrf.readRegister(regIdx, registerSize))
-      outputString = "Register %03x: [%s]" % (regIdx, ",".join(("%02x" % (byte) for byte in registerData)))
+      outputString = "Register %03x: [%s]" % (regIdx, ",".join(("%02x" % (ord(byte)) for byte in registerData)))
       if registerSize==1:
-        outputString += " " + '{:08b}'.format(registerData[0])
+        outputString += " " + '{:08b}'.format(ord(registerData[0]))
       print outputString
 
   def readPrintOutput(self):
@@ -97,8 +105,39 @@ class Reader:
     data = self.nrf.read()
     if data:
       sourceIndex, payload = data
-      print ("Got data on pipe %d" % (sourceIndex)), list(payload)
+      print ("Got data on pipe %d" % (sourceIndex)), [ord(byte) for byte in payload]
+      parseSendKiotPayload(payload)
       # print "Got packed from channel %d:", ",".join((("0x%02X" % (byte)) for byte in payload))
+
+
+def parseSendKiotPayload(data):
+  try:
+    (dataIndex, dataType) = unpack('BB', data[0:2])
+    if dataType == 3:
+      dataValue = unpack('!l', data[4:8])[0]
+      dataDescription = "32-bit uint"
+    else:
+      raise Exception("Unknown data type %d" % (dataType))
+    print "KiotPacket: index %d %s " % (dataIndex, dataDescription), dataValue
+    sendToGraphite(dataIndex, dataValue)
+  except Exception as e: print "Failed to parse packet", e, traceback.print_exc()
+
+def sendToGraphite(dataIndex, dataValue):
+  global graphite_paths, CARBON_SERVER, CARBON_PORT
+  try:
+    graphitePath = graphite_paths[dataIndex]
+    message = '%s %s %d' % (graphitePath, str(dataValue), int(time.time()))
+    print 'sending message: %s' % message,
+    sock = socket.socket()
+    try:
+      sock.connect((CARBON_SERVER, CARBON_PORT))
+      sock.sendall(message + "\n")
+      print "...sent",
+    finally:
+      print ""
+      sock.close()
+  except Exception as e: print "Failed to send data to graphite", e, traceback.print_exc()
+
 
 
 
