@@ -7,7 +7,7 @@ import argparse
 import nrf_args
 import kiot
 
-graphite_paths = { 0xA0: "breadboard.lightsensor.1"}
+graphite_paths = { 0xA0: "breadboard.lightsensor.1", 0xA1: "breadboard.tempsensor.1"}
 
 class Reader:
   def __init__(self, args):
