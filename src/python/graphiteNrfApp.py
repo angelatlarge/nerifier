@@ -22,9 +22,10 @@ def main():
     logging.basicConfig(level=logging.INFO)
   logger = logging
 
-  recAddrPlsize = readPipes(configs["nrf"]["pipes"])
+  nrfConfigs = configs["nrf"]
+  recAddrPlsize = readPipes(nrfConfigs["pipes"])
 
-  nrf = nrf24L01p.Nrf(recAddrPlsize=recAddrPlsize, channel=configs["nrf"]["channel"], logger=logger)
+  nrf = nrf24L01p.Nrf(recAddrPlsize=recAddrPlsize, channel=nrfConfigs["channel"], logger=logger, crcBytes=nrfConfigs["crcBites"])
   nrf.clearRx();
 
   sender = kiot.KiotSender(configs["carbon"]["server"], configs["carbon"]["port"], configs["graphite_paths"], logger)
@@ -37,7 +38,7 @@ def main():
         packet = kiot.parseKiotPayload(payload)
         sender.send(packet.dataIndex, packet.dataValue)
       except Exception as e:
-        logger.error(("Error processing packet \n%s\n" %(e)) + traceback.print_exc())
+        logger.error(("Error processing packet \n", e))
 
 
 def readPipes(yamlPipes):

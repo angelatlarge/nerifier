@@ -151,7 +151,7 @@ class Nrf():
       speed = 0,
       autoRetransmitCount = 15,
       autoRetransmitDelay = random.randrange(16),
-      crcScheme = 0,
+      crcBytes = 1,
       logger = log_thunks.FakeLogger
   ):
     self.logger = log_thunks.NoLogger if logger == None else logger
@@ -167,15 +167,16 @@ class Nrf():
     # Initialize the SPI bus
     self.spibus = Spibus(device="/dev/spidev32766.0", readMode=struct.pack('I',0), writeMode=struct.pack('I',0)) if spiBus == None else spiBus
 
+    # Set up the CRC scheme
+    self.crcBits = 0 if not crcBytes else 1<<Bits.EN_CRC | (min(crcBytes-1, 1) << Bits.CRCO)
+
     # Power up the chip, put it into TX mode
-    self.writeRegister(Reg.CONFIG, 1<<Bits.PWR_UP)
+    self.writeRegister(Reg.CONFIG, self.crcBits|1<<Bits.PWR_UP)
 
     # Set address width: convert as follows 3->1, 4->2, 5>3
     self.addressWidth = max(min(5, addressWidth), 3)
     self.writeRegister(Reg.SETUP_AW, self.addressWidth - 2)
 
-    # Set up the CRC scheme
-    self.crcBits = 0 if crcScheme==None else 1<<Bits.EN_CRC | (min(crcScheme, 1) << Bits.CRCO)
 
     # Set up auto retransmit delay and count
     # self.writeRegister(Reg.SETUP_RETR, min(autoRetransmitDelay, 15) << 4 | min(autoRetransmitCount, 15))

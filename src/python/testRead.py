@@ -21,7 +21,10 @@ class Reader:
     # and 0 as the buffer size (unbuffered)
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
-    self.nrf = Nrf(recAddrPlsize=nrf_args.constructRecAddrPlsize(self.args), channel=self.args.channel)
+    self.nrf = Nrf(
+      recAddrPlsize=nrf_args.constructRecAddrPlsize(self.args),
+      channel=self.args.channel,
+      crcBytes=self.args.crc)
     self.printRegisterMap()
 
     self.sender = kiot.KiotSender(self.args.carbon_server, self.args.carbon_port, graphite_paths)

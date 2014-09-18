@@ -2,6 +2,7 @@ from nrf24L01p import NrfPipe
 
 def addNrfArgs(parser):
   parser.add_argument('-c', '--channel', default=0x04)
+  parser.add_argument('--crc', type=int, default=1)
   parser.add_argument('-p0a', '--pipe0address', type=str, default="9a78563412")
   parser.add_argument('-p0s', '--pipe0size',    type=int, default=4)
   parser.add_argument('-p1a', '--pipe1address', type=str, default=None)
