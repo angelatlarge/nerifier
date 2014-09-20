@@ -24,18 +24,34 @@ class TestNrf(unittest.TestCase):
     self.doRegisterWriteTest(0x04, 0x05)
     self.doRegisterWriteTest(0x01, [0x02, 0x03])
 
-  def testCommandWithoutReturn(self):
-    self.doCommandTest(0xFF, 0, [chr(0xAA)])
+  def testCommandList(self):
+    self.doCommandTest(0xFF, 0, [chr(0xAA)], None)
 
-  def testCommandWithReturn(self):
-    self.doCommandTest(0xFF, 1, "".join([chr(0x41)]))
-    self.doCommandTest(0xFF, 2, "".join([chr(0x41), chr(0x42)]))
+  def testCommandString(self):
+    self.doCommandTest(0xFF, 0, "A", None)
+
+  def testCommandReturnOne(self):
+    self.doCommandTest(0xFF, 1, "AB", "B")
+
+  def testCommandReturnTwo(self):
+    self.doCommandTest(0xFF, 2, "ABC", "CB")
 
   def testReadRegisterOne(self):
     self.doReadRegisterTest(0x08, 1, "AB", "B")
 
   def testReadRegisterTwo(self):
-    self.doReadRegisterTest(0x08, 1, "ABC", "CB")
+    self.doReadRegisterTest(0x08, 2, "ABC", "CB")
+
+  def testReadRegisterThree(self):
+    self.doReadRegisterTest(0x08, 3, "ABCD", "DCB")
+
+  def testStatus(self):
+    self.hardware.reset_mock()
+    self.hardware.transfer.return_value = "A"
+
+    result = self.nrf.status()
+    self.assertEquals(result, 65)
+
 
   def doRegisterWriteTest(self, registerAddress, registerData):
     self.hardware.reset_mock()
@@ -49,7 +65,7 @@ class TestNrf(unittest.TestCase):
 
     self.hardware.transfer.called_with(chr(registerAddress) + registerData[::-1])
 
-  def doCommandTest(self, commandWord, returnSize, dataIn):
+  def doCommandTest(self, commandWord, returnSize, dataIn, expected = None):
     self.assertTrue(len(dataIn) >= returnSize)
     self.hardware.reset_mock()
     self.hardware.transfer.return_value = dataIn
@@ -57,10 +73,7 @@ class TestNrf(unittest.TestCase):
     result = self.nrf.command(commandWord, returnSize)
 
     self.hardware.transfer.called_with(chr(commandWord), returnSize)
-    if returnSize == 0:
-      self.assertIsNone(result)
-    else:
-      self.assertEquals(result, dataIn[1:][::-1])
+    self.assertEquals(result, expected)
 
   def doReadRegisterTest(self, registerNum, returnSize, dataIn, expected):
     self.hardware.reset_mock()

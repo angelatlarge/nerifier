@@ -273,7 +273,7 @@ class Nrf():
     Returns all results as a string, with the exception of the STATUS byte,
     which is sent back while the command is being sent there
     """
-    result = self.hardware.transfer(chr(commandBits), 1 + returnSize )
+    result = self.hardware.transfer(chr(commandBits), max(1, returnSize))
     if returnSize > 0:
       return result[returnSize:0:-1]   # Returning from byte 1+, and in reverse
 
@@ -284,10 +284,10 @@ class Nrf():
   def status(self):
     """
     Status is sent back while the command is being sent there
-
     returns contents of the status register as an int
     """
-    ord(self.hardware.transfer(chr(Cmd.NOP), 1)[0])
+
+    return ord(self.hardware.transfer(chr(Cmd.NOP), 1)[0])
 
   def dataReceivedPipeIndex(self, status):
     availablePipeIndex = status & Bits.RX_P_NO_MASK
