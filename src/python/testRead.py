@@ -6,7 +6,6 @@ import select
 import argparse
 import nrf_args
 import kiot
-import spi_intf_arietta
 
 graphite_paths = {
   0x00: "breadboard.lightsensor.1",
@@ -27,10 +26,23 @@ class Reader:
     # and 0 as the buffer size (unbuffered)
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
-    hardware_intf = spi_intf_arietta.SpiIntfArietta('J4.26')
+    if self.args.platform == "arietta":
+      import spi_intf_arietta
+      from spibus import Spibus
+      from ablib import Pin
+      import struct
+      hardware_intf = spi_intf_arietta.SpiIntfArietta(
+        spiBus=Spibus(device="/dev/spidev32766.0", readMode=struct.pack('I',0), writeMode=struct.pack('I',0)),
+        cePin = Pin('J4.26','OUTPUT')
+      )
+    elif self.args.platform == "rpi":
+      import spi_intf_rpi
+      import spi
+      import RPi.GPIO as GPIO
+      hardware_intf = spi_intf_rpi.SpiIntfRPi(spi, GPIO, 25)
 
     self.nrf = Nrf(
-      hardware_intf = hardware_intf,
+      hardwareIntf = hardware_intf,
       recAddrPlsize=nrf_args.constructRecAddrPlsize(self.args),
       channel=self.args.channel,
       crcBytes=self.args.crc,
@@ -110,6 +122,7 @@ class Reader:
 
 def main():
   parser = argparse.ArgumentParser()
+  parser.add_argument('platform', choices=['arietta', 'rpi'])
   parser.add_argument('--carbon_port', type=int, default=2003)
   parser.add_argument('--carbon_server', type=str, default="127.0.0.1")
   nrf_args.addNrfArgs(parser)

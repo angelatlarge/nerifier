@@ -1,9 +1,8 @@
-from ablib import Pin
 
 class SpiIntfArietta:
-  def __init__(self, spiBus, cePinId):
+  def __init__(self, spiBus, cePin):
     self.spibus = spiBus
-    self.cePin = Pin(cePinId,'OUTPUT')
+    self.cePin = cePin
 
   def transfer(self, outData, returnSize = None):
     if returnSize == None: returnSize = len(outData)

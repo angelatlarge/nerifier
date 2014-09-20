@@ -18,6 +18,9 @@ class SpiIntfRPi:
     else:
       return "".join([ chr(byte) for byte in results[:returnSize] ])
 
+  def __exit__(self, type, value, traceback):
+    self.spi.closeSPI()
+
   def ceLow(self):
     self.GPIO.output(self.cePin, False)
 

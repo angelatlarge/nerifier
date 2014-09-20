@@ -146,8 +146,8 @@ class Nrf():
 
     self.hardware.ceLow()   # Xmit off
 
-    self.logger.info("Sleeping for one sec..."),
-    sleep(1)
+    self.logger.info("Sleeping for 100 msec..."),
+    sleep(0.1)
     self.logger.info("done")
 
     # Set up the CRC scheme
@@ -249,7 +249,7 @@ class Nrf():
     # Set to receive mode
     self.writeRegister(Reg.CONFIG, self.crcBits|((1<<Bits.PWR_UP)|(1<<Bits.PRIM_RX)));
 
-    self.hardware.ceHigh
+    self.hardware.ceHigh()
 
   def readRegister(self, register, size=1):
     return self.command(Cmd.R_REGISTER | (REGISTER_MASK & register), size)
@@ -269,8 +269,7 @@ class Nrf():
     except TypeError:
       dataString = "".join([chr(b) for b in dataList])
     result = self.hardware.transfer(commandWord + dataString[::-1])
-    result.reverse
-    return result
+    return result[::-1]
 
   def command(self, commandBits, returnSize = 0):
     """
