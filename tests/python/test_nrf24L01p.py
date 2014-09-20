@@ -7,7 +7,7 @@
 """
 import unittest
 from nrf24L01p import Nrf
-from mock import MagicMock, call
+from mock import MagicMock
 
 class TestNrf(unittest.TestCase):
 
@@ -28,11 +28,8 @@ class TestNrf(unittest.TestCase):
     self.doCommandTest(0xFF, 0, [chr(0xAA)])
 
   def testCommandWithReturn(self):
-    self.doCommandTest(0xFF, 1, [chr(0x41)])
-    self.doCommandTest(0xFF, 2, [chr(0x41), chr(0x42)])
-
-
-
+    self.doCommandTest(0xFF, 1, "".join([chr(0x41)]))
+    self.doCommandTest(0xFF, 2, "".join([chr(0x41), chr(0x42)]))
 
   def doRegisterWriteTest(self, registerAddress, registerData):
     self.hardware.reset_mock()
@@ -57,11 +54,7 @@ class TestNrf(unittest.TestCase):
     if returnSize == 0:
       self.assertIsNone(result)
     else:
-      print dataIn
-      print dataIn[::-1]
       self.assertEquals(result, dataIn[::-1])
-
-
 
 if __name__ == '__main__':
   unittest.main()
