@@ -259,8 +259,6 @@ class Nrf():
     """
     register: Register address as an int
     data:     Register data as a list/tuple of characters (i.e a string) or bytes
-
-    returns received data as a string
     """
     commandWord = chr(Cmd.W_REGISTER | (REGISTER_MASK & register))
     dataList = data if hasattr(data, '__len__') else [data]
@@ -268,8 +266,7 @@ class Nrf():
       dataString = "".join(dataList)
     except TypeError:
       dataString = "".join([chr(b) for b in dataList])
-    result = self.hardware.transfer(commandWord + dataString[::-1])
-    return result[::-1]
+    self.hardware.transfer(commandWord + dataString[::-1])
 
   def command(self, commandBits, returnSize = 0):
     """
@@ -277,7 +274,7 @@ class Nrf():
     """
     result = self.hardware.transfer(chr(commandBits), 1 + returnSize )
     if returnSize > 0:
-      return result[::-1]
+      return result[2:0:-1]   # Returning from byte 1+, and in reverse
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
