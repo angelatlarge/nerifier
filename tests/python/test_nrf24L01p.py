@@ -9,6 +9,18 @@ import unittest
 from nrf24L01p import Nrf
 from mock import MagicMock
 
+class OutDataMatcher(object):
+  def __init__(self, requiredData, expectedLength):
+    self.expectedLength = requiredData
+    self.dontCareData = expectedLength
+
+  def __eq__(self, other):
+    if self.requiredData != None:
+      requiredOk = self.requiredData == other[:len(self.requiredData)]
+    else:
+      requiredOk = True
+    return requiredOk and len(other) == self.expectedLength
+
 class TestNrf(unittest.TestCase):
 
   def setUp(self):
@@ -72,7 +84,7 @@ class TestNrf(unittest.TestCase):
 
     result = self.nrf.command(commandWord, returnSize)
 
-    self.hardware.transfer.called_with(chr(commandWord), returnSize)
+    self.hardware.transfer.called_with(OutDataMatcher(chr(commandWord), max(1, returnSize)))
     self.assertEquals(result, expected)
 
   def doReadRegisterTest(self, registerNum, returnSize, dataIn, expected):
@@ -80,8 +92,8 @@ class TestNrf(unittest.TestCase):
     self.hardware.transfer.return_value = dataIn
 
     result = self.nrf.readRegister(registerNum, returnSize)
+    self.hardware.transfer.called_with(OutDataMatcher(None, max(1, returnSize)))
     self.assertEquals(result, expected)
-
 
 if __name__ == '__main__':
   unittest.main()
