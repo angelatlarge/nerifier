@@ -270,11 +270,12 @@ class Nrf():
 
   def command(self, commandBits, returnSize = 0):
     """
-    Returns results as a string
+    Returns all results as a string, with the exception of the STATUS byte,
+    which is sent back while the command is being sent there
     """
     result = self.hardware.transfer(chr(commandBits), 1 + returnSize )
     if returnSize > 0:
-      return result[2:0:-1]   # Returning from byte 1+, and in reverse
+      return result[returnSize:0:-1]   # Returning from byte 1+, and in reverse
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
@@ -286,8 +287,7 @@ class Nrf():
 
     returns contents of the status register as an int
     """
-    return ord(self.command(Cmd.NOP, 1)[0])
-
+    ord(self.hardware.transfer(chr(Cmd.NOP), 1)[0])
 
   def dataReceivedPipeIndex(self, status):
     availablePipeIndex = status & Bits.RX_P_NO_MASK
