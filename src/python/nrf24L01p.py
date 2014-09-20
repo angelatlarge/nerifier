@@ -67,9 +67,10 @@ class Bits:
   #define ARC         0 /* 4 bits */
   
   # RF setup register
-  #define PLL_LOCK    4
-  #define RF_DR       3
-  #define RF_PWR      1 /* 2 bits */
+  RF_DR_LOW           = 5
+  PLL_LOCK            = 4
+  RF_DR_HIGH          = 3
+  RF_PWR              = 1 # /* 2 bits */
   
   # general status register
   RX_DR               = 6
@@ -84,11 +85,11 @@ class Bits:
   #define ARC_CNT     0 /* 4 bits */
   
   # fifo status
-  #define TX_REUSE    6
-  #define FIFO_FULL   5
-  #define TX_EMPTY    4
-  #define RX_FULL     1
-  #define RX_EMPTY    0
+  TX_REUSE     = 6
+  FIFO_FULL    = 5
+  TX_EMPTY     = 4
+  RX_FULL      = 1
+  RX_EMPTY     = 0
   
   # dynamic length
   #define DPL_P0      0
@@ -192,8 +193,15 @@ class Nrf():
     # self.writeRegister(Reg.RF_SETUP, 0x15)
     # self.writeRegister(Reg.RF_SETUP, 0x06)
     # self.writeRegister(Reg.RF_SETUP, 0x26)
-    self.writeRegister(Reg.RF_SETUP, 0x0E)
 
+    fullPowerBits = 3 << Bits.RF_PWR
+    if   speed == 2: speedBits = 0 << Bits.RF_DR_LOW | 1 << Bits.RF_DR_HIGH
+    elif speed == 1: speedBits = 0 << Bits.RF_DR_LOW | 0 << Bits.RF_DR_HIGH
+    else:            speedBits = 1 << Bits.RF_DR_LOW | 0 << Bits.RF_DR_HIGH
+    rfSetup = speedBits | fullPowerBits
+    self.logger.info( "Writing %02x into RF_SETUP (%02x | %02x). Speed arg is %d" % (rfSetup, speedBits, fullPowerBits, speed) )
+
+    self.writeRegister(Reg.RF_SETUP, rfSetup)
 
     # set up payload sizes
     self.logger.info(recAddrPlsize)
@@ -323,38 +331,55 @@ class Nrf():
 
 
   def read(self):
+    result = []
     if self.recAddrPayload:
-      status = self.status()
-      idxPipe = self.dataReceivedPipeIndex(status)
-      if (status & (1<<Bits.RX_DR)) or idxPipe != None:
-        try:
-          if idxPipe == None:
-            self.writeRegister(Reg.STATUS, 1<<Bits.RX_DR|1<<Bits.TX_DS|1<<Bits.MASK_MAX_RT)
-            raise Exception("Nrf told us there would be data, but got no pipe index, clearing status")
-          if idxPipe>=len(self.recAddrPayload):
-            raise Exception("Invalid availablePipeIndex %d", idxPipe)
-          pipe = self.recAddrPayload[idxPipe]
-          payloadSize = pipe.payloadSize
-          if not payloadSize:
-            payloadSizeCmdOut = self.command(Cmd.R_RX_PL_WID, 1)
-            payloadSize = ord(payloadSizeCmdOut[0])
-          if (payloadSize) > 32:
-            self.logger.error("Corrupt data in buffer, flushing")
-            # Corrupt packet due to data overflow
-            self.command(Cmd.FLUSH_RX)
-            return None
-          else:
-            # Reading payload
-            data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
+      # The RX_DR IRQ is asserted by a new packet arrival event. The procedure for handling this interrupt should
+      # be: 1) read payload through SPI, 2) clear RX_DR IRQ, 3) read FIFO_STATUS to check if there are more
+      # payloads available in RX FIFO, 4) if there are more data in RX FIFO, repeat from step 1).
+      try:
+        status = self.status()
+        if (status & (1<<Bits.RX_DR)):
+          while True:
+            idxPipe = self.dataReceivedPipeIndex(status)
+            if idxPipe == None:
+              self.writeRegister(Reg.STATUS, 1<<Bits.RX_DR|1<<Bits.TX_DS|1<<Bits.MASK_MAX_RT)
+              raise Exception("Nrf told us there would be data, but got no pipe index, clearing status")
+            if idxPipe>=len(self.recAddrPayload):
+              raise Exception("Invalid availablePipeIndex %d", idxPipe)
+            pipe = self.recAddrPayload[idxPipe]
+            payloadSize = pipe.payloadSize
+            if not payloadSize:
+              payloadSizeCmdOut = self.command(Cmd.R_RX_PL_WID, 1)
+              payloadSize = ord(payloadSizeCmdOut[0])
+            if (payloadSize) > 32:
+              self.logger.error("Corrupt data in buffer, flushing")
+              # Corrupt packet due to data overflow
+              self.command(Cmd.FLUSH_RX)
+              return None
+            else:
+              # Reading payload
+              data = self.command(Cmd.R_RX_PAYLOAD, payloadSize)
+              result.append((idxPipe, data))
+
             self.writeRegister(Reg.STATUS, 0x7F) # clear data received bit
-            return (idxPipe, data)
-        except Exception as e:
-          self.logger.error(str(e))
-      else:
-        # No data available
-        return None
+
+            # Step 3: read FIFO status and loop if more data is available
+            fifoStatus = ord(self.readRegister(Reg.FIFO_STATUS)[0])
+            if fifoStatus & (1<<Bits.RX_EMPTY):
+              self.clearRx
+              break
+        else:
+          # No data available
+          pass
+      except Exception as e:
+        self.logger.error(str(e))
     else:
       raise Exception("self.recAddrPayload misconfigured. Cannot read")
 
+    return result
+
   def clearRx(self):
     self.command(Cmd.FLUSH_RX)
+
+  def clearStatus(self):
+    self.writeRegister(Reg.STATUS, 0x7F)

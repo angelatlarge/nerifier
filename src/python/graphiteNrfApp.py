@@ -25,18 +25,26 @@ def main():
   nrfConfigs = configs["nrf"]
   recAddrPlsize = readPipes(nrfConfigs["pipes"])
 
-  nrf = nrf24L01p.Nrf(recAddrPlsize=recAddrPlsize, channel=nrfConfigs["channel"], logger=logger, crcBytes=nrfConfigs["crcBites"])
+  nrf = nrf24L01p.Nrf(
+    recAddrPlsize=recAddrPlsize,
+    channel=nrfConfigs["channel"],
+    logger=logger,
+    crcBytes=nrfConfigs["crcBites"],
+    speed=nrfConfigs["speed"])
   nrf.clearRx();
+  nrf.clearStatus();
+  nrf.clearRx();
+  nrf.clearStatus();
 
   sender = kiot.KiotSender(configs["carbon"]["server"], configs["carbon"]["port"], configs["graphite_paths"], logger)
 
   while True:
     data = nrf.read()
-    if data:
-      sourceIndex, payload = data
+    for datum in data:
+      sourceIndex, payload = datum
       try:
         packet = kiot.parseKiotPayload(payload)
-        sender.send(packet.dataIndex, packet.dataValue)
+        sender.send(packet.dataIndex, packet.dataValue, packet.previousRetryCount)
       except Exception as e:
         logger.error(("Error processing packet \n", e))
 

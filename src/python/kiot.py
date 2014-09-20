@@ -4,15 +4,16 @@ import time
 import log_thunks
 
 class KiotPacket():
-  def __init__(self, dataIndex, dataType, dataTypeDescription, dataValue):
+  def __init__(self, dataIndex, dataType, dataTypeDescription, dataValue, previousRetryCount):
     self.dataIndex = dataIndex
     self.dataType = dataType
     self.dataTypeDescription = dataTypeDescription
     self.dataValue = dataValue
+    self.previousRetryCount = previousRetryCount
 
 
 def parseKiotPayload(data):
-    (dataIndex, dataType) = unpack('BB', data[0:2])
+    (dataIndex, dataType, prevRetryCount) = unpack('!BBH', data[0:4])
     if dataType == 3:
       # unsigned 32-bit int
       dataValue = unpack('!l', data[4:8])[0]
@@ -28,7 +29,7 @@ def parseKiotPayload(data):
     else:
       raise Exception("Unknown data type %d" % (dataType))
 
-    return KiotPacket(dataIndex, dataType, dataDescription, dataValue)
+    return KiotPacket(dataIndex, dataType, dataDescription, dataValue, prevRetryCount)
 
 class KiotSender():
 
@@ -38,9 +39,15 @@ class KiotSender():
     self.graphite_paths = graphite_paths
     self.logger = log_thunks.NoLogger if logger == None else logger
 
-  def send(self, dataIndex, dataValue):
+  def send(self, dataIndex, dataValue, retryCount):
     graphitePath = self.graphite_paths[dataIndex]
-    message = '%s %s %d' % (graphitePath, str(dataValue), int(time.time()))
+    timestamp = int(time.time())
+    metricMessage = '%s.value %s %d' % (graphitePath, str(dataValue), timestamp)
+    retryMessage = '%s.retries %d %d' % (graphitePath, retryCount, timestamp)
+    self.sendMessage(metricMessage)
+    self.sendMessage(retryMessage)
+
+  def sendMessage(self, message):
     self.logger.info('sending message: %s' % message)
     sock = socket.socket()
     try:

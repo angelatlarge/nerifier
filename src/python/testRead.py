@@ -7,7 +7,12 @@ import argparse
 import nrf_args
 import kiot
 
-graphite_paths = { 0xA0: "breadboard.lightsensor.1", 0xA1: "breadboard.tempsensor.1"}
+graphite_paths = {
+  0x00: "breadboard.lightsensor.1",
+  0x01: "breadboard.tempsensor.1",
+  0xA0: "breadboard.lightsensor.1",
+  0xA1: "breadboard.tempsensor.1"
+}
 
 class Reader:
   def __init__(self, args):
@@ -24,7 +29,8 @@ class Reader:
     self.nrf = Nrf(
       recAddrPlsize=nrf_args.constructRecAddrPlsize(self.args),
       channel=self.args.channel,
-      crcBytes=self.args.crc)
+      crcBytes=self.args.crc,
+      speed=self.args.speed)
     self.printRegisterMap()
 
     self.sender = kiot.KiotSender(self.args.carbon_server, self.args.carbon_port, graphite_paths)
@@ -90,11 +96,11 @@ class Reader:
     Reads NRF transmission and prints the data
     """
     data = self.nrf.read()
-    if data:
-      sourceIndex, payload = data
+    for datum in data:
+      sourceIndex, payload = datum
       print ("Got data on pipe %d" % (sourceIndex)), [ord(byte) for byte in payload]
       packet = kiot.parseKiotPayload(payload)
-      self.sender.send(packet.dataIndex, packet.dataValue)
+      self.sender.send(packet.dataIndex, packet.dataValue, packet.previousRetryCount)
       # print "Got packed from channel %d:", ",".join((("0x%02X" % (byte)) for byte in payload))
 
 
