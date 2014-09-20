@@ -280,6 +280,10 @@ class Nrf():
     self.spibus.send(len(dataList)+1)
 
   def command(self, commandBits, returnSize = 0):
+    """
+      Run a command, returning everything except the STATUS byte
+      (which is sent back while the command is being sent there)
+    """
     self.spibus.write_buffer[0] = chr(commandBits)
 
     # Testing initialization
@@ -316,7 +320,11 @@ class Nrf():
     self.cePin.high()
 
   def status(self):
-    """ Status is sent back while the command is being sent there """
+    """
+    Status is sent back while the command is being sent there.
+    That is why we don't use command() function,
+    it returns data without the statis
+    """
     self.spibus.write_buffer[0] = chr(Cmd.NOP)
     self.spibus.send(1)
     return (ord(self.spibus.read_buffer[0]))
