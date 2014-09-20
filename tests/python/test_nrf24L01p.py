@@ -7,19 +7,15 @@
 """
 import unittest
 from nrf24L01p import Nrf
-from mock import MagicMock
+from mock import MagicMock, ANY
 
-class OutDataMatcher(object):
-  def __init__(self, requiredData, expectedLength):
-    self.expectedLength = requiredData
-    self.dontCareData = expectedLength
+class ExactLengthMatcher(object):
+  def __init__(self, expectedLength):
+    self.expectedLength = expectedLength
 
   def __eq__(self, other):
-    if self.requiredData != None:
-      requiredOk = self.requiredData == other[:len(self.requiredData)]
-    else:
-      requiredOk = True
-    return requiredOk and len(other) == self.expectedLength
+    return len(other) == self.expectedLength
+
 
 class TestNrf(unittest.TestCase):
 
@@ -49,13 +45,13 @@ class TestNrf(unittest.TestCase):
     self.doCommandTest(0xFF, 2, "ABC", "CB")
 
   def testReadRegisterOne(self):
-    self.doReadRegisterTest(0x08, 1, "AB", "B")
+    self.doReadRegisterTest(0x08, 1, "_B", "B")
 
   def testReadRegisterTwo(self):
-    self.doReadRegisterTest(0x08, 2, "ABC", "CB")
+    self.doReadRegisterTest(0x08, 2, "_BC", "CB")
 
   def testReadRegisterThree(self):
-    self.doReadRegisterTest(0x08, 3, "ABCD", "DCB")
+    self.doReadRegisterTest(0x08, 3, "_BCD", "DCB")
 
   def testStatus(self):
     self.hardware.reset_mock()
@@ -84,15 +80,19 @@ class TestNrf(unittest.TestCase):
 
     result = self.nrf.command(commandWord, returnSize)
 
-    self.hardware.transfer.called_with(OutDataMatcher(chr(commandWord), max(1, returnSize)))
+    self.hardware.transfer.assert_called_with(ANY, returnSize + 1)
     self.assertEquals(result, expected)
 
   def doReadRegisterTest(self, registerNum, returnSize, dataIn, expected):
+    self.assertTrue(returnSize>0, "Internal test failure")
+    self.assertEquals(len(dataIn), returnSize+1, "Internal test failure")
+    self.assertEquals(len(expected), returnSize, "Internal test failure")
+
     self.hardware.reset_mock()
     self.hardware.transfer.return_value = dataIn
 
     result = self.nrf.readRegister(registerNum, returnSize)
-    self.hardware.transfer.called_with(OutDataMatcher(None, max(1, returnSize)))
+    self.hardware.transfer.assert_called_with(ExactLengthMatcher(1), returnSize+1)
     self.assertEquals(result, expected)
 
 if __name__ == '__main__':

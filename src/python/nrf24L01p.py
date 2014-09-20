@@ -146,9 +146,9 @@ class Nrf():
 
     self.hardware.ceLow()   # Xmit off
 
-    self.logger.info("Sleeping for 100 msec..."),
-    sleep(0.1)
-    self.logger.info("done")
+    # self.logger.info("Sleeping for 100 msec..."),
+    # sleep(0.1)
+    # self.logger.info("done")
 
     # Set up the CRC scheme
     self.crcBits = 0 if not crcBytes else 1<<Bits.EN_CRC | (min(crcBytes-1, 1) << Bits.CRCO)
@@ -273,7 +273,7 @@ class Nrf():
     Returns all results as a string, with the exception of the STATUS byte,
     which is sent back while the command is being sent there
     """
-    result = self.hardware.transfer(chr(commandBits), max(1, returnSize))
+    result = self.hardware.transfer(chr(commandBits), returnSize + 1)
     if returnSize > 0:
       return result[returnSize:0:-1]   # Returning from byte 1+, and in reverse
 
