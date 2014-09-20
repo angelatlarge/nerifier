@@ -1,7 +1,3 @@
-import struct
-import random
-from spibus import Spibus
-from ablib import Pin
 from time import sleep
 import log_thunks
 
@@ -134,39 +130,25 @@ class NrfPipe():
 
 class Nrf():
 
-  """
-    addressWidth        the number of bytes used for the address. Legal values are 3, 4, and 5
-    recAddrPayload      Tuple (or a list of tuples up to 6 elements long) of receiver address and payload size
-    spiDevice           Path to the device on your system
-    cdPinId             Name of the GPIO pin connected to the CE pin of NRF24L01 plus
-    crcScheme
-    autoRetransmitBits
-  """
   def __init__(
       self,
-      spiBus = None,
+      hardwareIntf,
       addressWidth = 5,
       recAddrPlsize = [NrfPipe(None, 4)],
-      cePinId='J4.26',
       channel = 2,
       speed = 0,
-      autoRetransmitCount = 15,
-      autoRetransmitDelay = random.randrange(16),
       crcBytes = 1,
       logger = log_thunks.FakeLogger
   ):
     self.logger = log_thunks.NoLogger if logger == None else logger
-    self.cePin = Pin(cePinId,'OUTPUT')
 
+    self.hardware = hardwareIntf
 
-    self.cePin.low()  # Xmit off
+    self.hardware.ceLow()   # Xmit off
 
     self.logger.info("Sleeping for one sec..."),
     sleep(1)
     self.logger.info("done")
-
-    # Initialize the SPI bus
-    self.spibus = Spibus(device="/dev/spidev32766.0", readMode=struct.pack('I',0), writeMode=struct.pack('I',0)) if spiBus == None else spiBus
 
     # Set up the CRC scheme
     self.crcBits = 0 if not crcBytes else 1<<Bits.EN_CRC | (min(crcBytes-1, 1) << Bits.CRCO)
@@ -267,59 +249,43 @@ class Nrf():
     # Set to receive mode
     self.writeRegister(Reg.CONFIG, self.crcBits|((1<<Bits.PWR_UP)|(1<<Bits.PRIM_RX)));
 
-    self.cePin.high() # Necessary for RX mode
+    self.hardware.ceHigh
 
   def readRegister(self, register, size=1):
     return self.command(Cmd.R_REGISTER | (REGISTER_MASK & register), size)
 
+
   def writeRegister(self, register, data):
-    self.spibus.write_buffer[0] = chr(Cmd.W_REGISTER | (REGISTER_MASK & register))
+    """
+    Takes register data as a list/tuple of characters
+    """
+    commandWord = chr(Cmd.W_REGISTER | (REGISTER_MASK & register))
     dataList = data if hasattr(data, '__len__') else [data]
-    for idx in range(len(dataList)):
-      self.spibus.write_buffer[len(dataList)-idx] = chr(dataList[idx])
-    self.spibus.send(len(dataList)+1)
+    dataList.reverse()
+    result = self.hardware.transfer([commandWord] + dataList)
+    result.reverse
+    return result
 
   def command(self, commandBits, returnSize = 0):
-    self.spibus.write_buffer[0] = chr(commandBits)
-
-    # Testing initialization
-    for i in range(returnSize+1):
-      self.spibus.read_buffer[i] = chr(0xFF)
-
-    self.spibus.send(1+returnSize)
+    """
+    Returns results as a tuple of characters
+    """
+    result = self.hardware.transfer(chr(commandBits), 1 + returnSize )
     if returnSize > 0:
-      # Don't want to use iterators here, because the buffer will get overwritten
-
-      # This converts the string to bytes
-      # return [ord(self.spibus.read_buffer[returnSize-idx]) for idx in range(returnSize)]
-
-      # THis retuens a list of chars?
-      # return [self.spibus.read_buffer[returnSize-idx] for idx in range(returnSize)]
-
-      return self.spibus.read_buffer[returnSize:0:-1]
-
+      result.reverse
+      return result
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
     self.nrf24_writeRegister(Reg.CONFIG, self.crcBits|((1<<Bits.PWR_UP)|(0<<Bits.PRIM_RX)));
 
-  def send(self, data):
-    """ Need to try to unify this with writeRegister, and command()
-    """
-    self.cePin.low()
-    self.powerUpTx()
-    self.command(Cmd.FLUSH_TX)
-    self.spibus.write_buffer[0] = Cmd.W_TX_PAYLOAD
-    for idx in len(data):
-      self.spibus.write_buffer[len(data)-idx] = chr(data[idx])
-    self.spibus.send(len(data))
-    self.cePin.high()
-
   def status(self):
-    """ Status is sent back while the command is being sent there """
-    self.spibus.write_buffer[0] = chr(Cmd.NOP)
-    self.spibus.send(1)
-    return (ord(self.spibus.read_buffer[0]))
+    """
+    Status is sent back while the command is being sent there
+
+    returns contents of the status register as an int
+    """
+    return ord(self.command(Cmd.NOP, 1)[0])
 
 
   def dataReceivedPipeIndex(self, status):

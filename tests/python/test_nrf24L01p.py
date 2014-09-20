@@ -8,14 +8,14 @@ class TestNrf(unittest.TestCase):
 
   def setUp(self):
     self.seq = range(10)
-    self.mockSpibus = MagicMock()
-    self.nrf = Nrf(self.mockSpibus)
+    self.hardware = MagicMock()
+    self.nrf = Nrf(hardwareIntf = self.hardware)
 
   def testInitilizeRegister(self):
     pass
 
   def doRegisterWriteTest(self, registerAddress, registerData):
-    self.mockSpibus.reset_mock()
+    self.hardware.reset_mock()
     self.nrf.writeRegister(registerAddress, registerData)
 
     regAddressCall = call(0, registerAddress)
@@ -26,7 +26,8 @@ class TestNrf(unittest.TestCase):
       index = len(registerData) - i
       dataCalls.append(call(index, datum))
 
-    self.mockSpibus.write_buffer.__setitem__.called_with([regAddressCall] + dataCalls)
+    self.hardware.transfer.called_with([regAddressCall] + dataCalls)
+      .write_buffer.__setitem__.called_with()
     self.mockSpibus.send.assert_called_with(len(registerData)+1)
 
   def testWriteRegister(self):

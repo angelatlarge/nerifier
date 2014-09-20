@@ -6,6 +6,7 @@ import select
 import argparse
 import nrf_args
 import kiot
+import spi_intf_arietta
 
 graphite_paths = {
   0x00: "breadboard.lightsensor.1",
@@ -26,7 +27,10 @@ class Reader:
     # and 0 as the buffer size (unbuffered)
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
+    hardware_intf = spi_intf_arietta.SpiIntfArietta('J4.26')
+
     self.nrf = Nrf(
+      hardware_intf = hardware_intf,
       recAddrPlsize=nrf_args.constructRecAddrPlsize(self.args),
       channel=self.args.channel,
       crcBytes=self.args.crc,
