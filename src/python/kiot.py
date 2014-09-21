@@ -48,7 +48,7 @@ class KiotSender():
     self.sendMessage(retryMessage)
 
   def sendMessage(self, message):
-    self.logger.info('sending message: %s' % message)
+    self.logger.debug('sending message: %s' % message)
     sock = socket.socket()
     try:
       sock.connect((self.carbonServer, self.carbonPort))

@@ -26,7 +26,23 @@ class Reader:
     # and 0 as the buffer size (unbuffered)
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
+    if self.args.platform == "arietta":
+      import spi_intf_arietta
+      from spibus import Spibus
+      from ablib import Pin
+      import struct
+      hardware_intf = spi_intf_arietta.SpiIntfArietta(
+        spiBus=Spibus(device="/dev/spidev32766.0", readMode=struct.pack('I',0), writeMode=struct.pack('I',0)),
+        cePin = Pin('J4.26','OUTPUT')
+      )
+    elif self.args.platform == "rpi":
+      import spi_intf_rpi
+      import spi
+      import RPi.GPIO as GPIO
+      hardware_intf = spi_intf_rpi.SpiIntfRPi(spi, GPIO, 25)
+
     self.nrf = Nrf(
+      hardwareIntf = hardware_intf,
       recAddrPlsize=nrf_args.constructRecAddrPlsize(self.args),
       channel=self.args.channel,
       crcBytes=self.args.crc,
@@ -83,10 +99,37 @@ class Reader:
     return ready
 
   def printRegisterMap(self):
-    for regIdx in range(0, Reg.FEATURE+1):
-      registerSize = 5 if regIdx in range(Reg.RX_ADDR_P0, Reg.RX_ADDR_P5 + 1) else 1
-      registerData = list(self.nrf.readRegister(regIdx, registerSize))
-      outputString = "Register %03x: [%s]" % (regIdx, ",".join(("%02x" % (ord(byte)) for byte in registerData)))
+    for idx, name in {
+      0x00:'CONFIG',
+      0x01:'EN_AA',
+      0x02:'EN_RXADDR',
+      0x03:'SETUP_AW',
+      0x04:'SETUP_RETR',
+      0x05:'RF_CH',
+      0x06:'RF_SETUP',
+      0x07:'STATUS',
+      0x08:'OBSERVE_TX',
+      0x09:'RPD',
+      0x0A:'RX_ADDR_P0',
+      0x0B:'RX_ADDR_P1',
+      0x0C:'RX_ADDR_P2',
+      0x0D:'RX_ADDR_P3',
+      0x0E:'RX_ADDR_P4',
+      0x0F:'RX_ADDR_P6',
+      0x10:'TX_ADDR',
+      0x11:'RX_PW_P0',
+      0x12:'RX_PW_P1',
+      0x13:'RX_PW_P2',
+      0x14:'RX_PW_P3',
+      0x15:'RX_PW_P4',
+      0x16:'RX_PW_P5',
+      0x17:'FIFO_STATUS',
+      0x1C:'DYNPD',
+      0x1D:'FEATURE'
+      }.iteritems():
+      registerSize = 5 if idx in range(Reg.RX_ADDR_P0, Reg.TX_ADDR + 1) else 1
+      registerData = list(self.nrf.readRegister(idx, registerSize))
+      outputString = "Register %03x (%11s): [%s]" % (idx, name, ",".join(("%02x" % (ord(byte)) for byte in registerData)))
       if registerSize==1:
         outputString += " " + '{:08b}'.format(ord(registerData[0]))
       print outputString
@@ -106,6 +149,7 @@ class Reader:
 
 def main():
   parser = argparse.ArgumentParser()
+  parser.add_argument('platform', choices=['arietta', 'rpi'])
   parser.add_argument('--carbon_port', type=int, default=2003)
   parser.add_argument('--carbon_server', type=str, default="127.0.0.1")
   nrf_args.addNrfArgs(parser)
