@@ -153,8 +153,17 @@ class Nrf():
     # Set up the CRC scheme
     self.crcBits = 0 if not crcBytes else 1<<Bits.EN_CRC | (min(crcBytes-1, 1) << Bits.CRCO)
 
+    # Set up the masking bits
+    self.irqMaskBits = (
+      1<<Bits.MASK_TX_DS    # TS_DS not reflected on IRQ pin
+      | 1<<Bits.MASK_MAX_RT   # MAX_RT not reflected on IRQ pin
+    )
     # Power up the chip, put it into TX mode
-    self.writeRegister(Reg.CONFIG, self.crcBits|1<<Bits.PWR_UP)
+    self.writeRegister(Reg.CONFIG,
+      self.crcBits
+      | self.irqMaskBits
+      | 1<<Bits.PWR_UP
+    )
 
     # Set address width: convert as follows 3->1, 4->2, 5>3
     self.addressWidth = max(min(5, addressWidth), 3)
@@ -247,7 +256,7 @@ class Nrf():
     self.writeRegister(Reg.EN_AA, 0x3F)
 
     # Set to receive mode
-    self.writeRegister(Reg.CONFIG, self.crcBits|((1<<Bits.PWR_UP)|(1<<Bits.PRIM_RX)));
+    self.writeRegister(Reg.CONFIG, self.crcBits|self.irqMaskBits|((1<<Bits.PWR_UP)|(1<<Bits.PRIM_RX)));
 
     self.hardware.ceHigh()
 
@@ -279,7 +288,7 @@ class Nrf():
 
   def powerUpTx(self):
     self.nrf24_writeRegister(Reg.STATUS,(1<<Bits.RX_DR)|(1<<self.BOT_TX_DS)|(1<<Bits.MAX_RT));
-    self.nrf24_writeRegister(Reg.CONFIG, self.crcBits|((1<<Bits.PWR_UP)|(0<<Bits.PRIM_RX)));
+    self.nrf24_writeRegister(Reg.CONFIG, self.crcBits|self.irqMaskBits|((1<<Bits.PWR_UP)|(0<<Bits.PRIM_RX)));
 
   def status(self):
     """
