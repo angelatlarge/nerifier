@@ -17,3 +17,7 @@ class SpiIntfArietta:
 
   def ceHigh(self):
     self.cePin.high()
+
+  @property
+  def canAttachIrq(self):
+    return False

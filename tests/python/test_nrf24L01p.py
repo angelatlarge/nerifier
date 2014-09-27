@@ -60,6 +60,10 @@ class TestNrf(unittest.TestCase):
     result = self.nrf.status()
     self.assertEquals(result, 65)
 
+  def testAckPacket(self):
+    self.doTestAckPacket(0, "ABC")
+    self.doTestAckPacket(2, "CBA")
+
 
   def doRegisterWriteTest(self, registerAddress, registerData):
     self.hardware.reset_mock()
@@ -94,6 +98,12 @@ class TestNrf(unittest.TestCase):
     result = self.nrf.readRegister(registerNum, returnSize)
     self.hardware.transfer.assert_called_with(ExactLengthMatcher(1), returnSize+1)
     self.assertEquals(result, expected)
+
+  def doTestAckPacket(self, pipe, data):
+    self.hardware.reset_mock()
+    self.nrf.queueAckPacket(pipe, data)
+    expectedData = chr(0xA8 + pipe) + data[::-1]
+    self.hardware.transfer.assert_called_with(expectedData, len(expectedData))
 
 if __name__ == '__main__':
   unittest.main()

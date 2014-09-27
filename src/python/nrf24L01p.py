@@ -82,7 +82,7 @@ class Bits:
   
   # fifo status
   TX_REUSE     = 6
-  FIFO_FULL    = 5
+  TX_FULL      = 5
   TX_EMPTY     = 4
   RX_FULL      = 1
   RX_EMPTY     = 0
@@ -104,6 +104,35 @@ class Bits:
 REGISTER_MASK           = 0x1F
 RX_FIFO_EMPTY           = Bits.RX_P_NO_MASK
 
+
+registerNames = {
+  0x00:'CONFIG',
+  0x01:'EN_AA',
+  0x02:'EN_RXADDR',
+  0x03:'SETUP_AW',
+  0x04:'SETUP_RETR',
+  0x05:'RF_CH',
+  0x06:'RF_SETUP',
+  0x07:'STATUS',
+  0x08:'OBSERVE_TX',
+  0x09:'RPD',
+  0x0A:'RX_ADDR_P0',
+  0x0B:'RX_ADDR_P1',
+  0x0C:'RX_ADDR_P2',
+  0x0D:'RX_ADDR_P3',
+  0x0E:'RX_ADDR_P4',
+  0x0F:'RX_ADDR_P6',
+  0x10:'TX_ADDR',
+  0x11:'RX_PW_P0',
+  0x12:'RX_PW_P1',
+  0x13:'RX_PW_P2',
+  0x14:'RX_PW_P3',
+  0x15:'RX_PW_P4',
+  0x16:'RX_PW_P5',
+  0x17:'FIFO_STATUS',
+  0x1C:'DYNPD',
+  0x1D:'FEATURE'
+}
 
 def printBinary(addr):
   addr = addr if isinstance(addr, list) else [addr]
@@ -154,9 +183,10 @@ class Nrf():
     self.crcBits = 0 if not crcBytes else 1<<Bits.EN_CRC | (min(crcBytes-1, 1) << Bits.CRCO)
 
     # Set up the masking bits
-    self.irqMaskBits = (
-      1<<Bits.MASK_TX_DS    # TS_DS not reflected on IRQ pin
-      | 1<<Bits.MASK_MAX_RT   # MAX_RT not reflected on IRQ pin
+    self.irqMaskBits = (0
+      | 0<<Bits.MASK_RX_DR    # RX_DR IS reflected on IRQ pin
+      | 0<<Bits.MASK_TX_DS    # TS_DS IS reflected on IRQ pin
+      | 0<<Bits.MASK_MAX_RT   # MAX_RT IS reflected on IRQ pin
     )
     # Power up the chip, put it into TX mode
     self.writeRegister(Reg.CONFIG,
@@ -204,8 +234,13 @@ class Nrf():
       # Enable dynamic payload if necessary
       self.logger.debug(self.recAddrPayload)
       dynamicPayloadSizeBit = 1 if any([not pipe.payloadSize for pipe in self.recAddrPayload if pipe]) else 0
-      self.logger.info( "Writing %02x into FEATURE" % (dynamicPayloadSizeBit << Bits.EN_DPL) )
-      self.writeRegister(Reg.FEATURE, (dynamicPayloadSizeBit << Bits.EN_DPL))
+
+      featureValue = 0 \
+        | (dynamicPayloadSizeBit << Bits.EN_DPL) \
+        | (1<<Bits.EN_ACK_PAY)
+
+      self.logger.info( "Writing %02x into FEATURE" % (featureValue) )
+      self.writeRegister(Reg.FEATURE, (featureValue))
 
       # Set payload sizes
       pipesEnableValue = 0
@@ -277,12 +312,17 @@ class Nrf():
       dataString = "".join([chr(b) for b in dataList])
     self.hardware.transfer(commandWord + dataString[::-1])
 
-  def command(self, commandBits, returnSize = 0):
+  def command(self, commandData, returnSize = 0):
     """
+    Sends a command (byte or a string)
     Returns all results as a string, with the exception of the STATUS byte,
     which is sent back while the command is being sent there
     """
-    result = self.hardware.transfer(chr(commandBits), returnSize + 1)
+    try:
+      outData = chr(commandData)
+    except TypeError:
+      outData = commandData 
+    result = self.hardware.transfer(outData, len(outData) + returnSize)
     if returnSize > 0:
       return result[returnSize:0:-1]   # Returning from byte 1+, and in reverse
 
@@ -295,11 +335,14 @@ class Nrf():
     Status is sent back while the command is being sent there
     returns contents of the status register as an int
     """
+    self.lastStatus = ord(self.hardware.transfer(chr(Cmd.NOP), 1)[0])
+    return self.lastStatus
 
-    return ord(self.hardware.transfer(chr(Cmd.NOP), 1)[0])
+  def fifoStatus(self):
+    return ord(self.readRegister(Reg.FIFO_STATUS, 1)[0])
 
   def dataReceivedPipeIndex(self, status):
-    availablePipeIndex = status & Bits.RX_P_NO_MASK
+    availablePipeIndex = status & 1<<Bits.RX_P_NO_MASK
     if (availablePipeIndex != RX_FIFO_EMPTY):
       return availablePipeIndex >> 1;
     else:
@@ -357,5 +400,40 @@ class Nrf():
   def clearRx(self):
     self.command(Cmd.FLUSH_RX)
 
+  def clearTx(self):
+    self.command(Cmd.FLUSH_TX)
+
   def clearStatus(self):
     self.writeRegister(Reg.STATUS, 0x7F)
+
+  def isTxEmpty(self):
+    return (self.fifoStatus() & 1<<Bits.TX_EMPTY) > 0
+
+  def isMaxRt(self):
+    return (self.status() & 1<<Bits.MAX_RT) > 0
+
+  def clearMaxRt(self, useLastStatus = False):
+    status = self.lastStatus if useLastStatus else self.status()
+    self.writeRegister(Reg.STATUS, 1<<Bits.MAX_RT)
+
+  def setChannel(self, channel):
+    self.writeRegister(Reg.RF_CH, channel)
+
+  def queueAckPacket(self, pipeIndex, data):
+    self.logger.debug("Queueing ack packet payload on pipe %d" % (pipeIndex))
+    pipeIndex = min(pipeIndex, 5)
+    dataList = data if hasattr(data, '__len__') else [data]
+    try:
+      dataString = "".join(dataList)
+    except TypeError:
+      dataString = "".join([chr(b) for b in dataList])
+    dataString = dataString[::-1]
+    self.command(chr(Cmd.W_ACK_PAYLOAD | pipeIndex) + dataString )
+
+  def getRegisterMap(self):
+    results = []
+    for idx, name in registerNames.iteritems():
+      registerSize = 5 if idx in range(Reg.RX_ADDR_P0, Reg.TX_ADDR + 1) else 1
+      registerData = list(self.readRegister(idx, registerSize))
+      results.append((idx, name, registerData))
+    return results
