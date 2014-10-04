@@ -1,5 +1,4 @@
-from time import sleep
-import log_thunks
+import logging
 
 # Commands
 class Cmd:
@@ -166,18 +165,11 @@ class Nrf():
       recAddrPlsize = [NrfPipe(None, 4)],
       channel = 2,
       speed = 0,
-      crcBytes = 1,
-      logger = log_thunks.FakeLogger
+      crcBytes = 1
   ):
-    self.logger = log_thunks.NoLogger if logger == None else logger
-
     self.hardware = hardwareIntf
 
     self.hardware.ceLow()   # Xmit off
-
-    # self.logger.info("Sleeping for 100 msec..."),
-    # sleep(0.1)
-    # self.logger.info("done")
 
     # Set up the CRC scheme
     self.crcBits = 0 if not crcBytes else 1<<Bits.EN_CRC | (min(crcBytes-1, 1) << Bits.CRCO)
@@ -206,7 +198,7 @@ class Nrf():
 
     # Set up the channel
     channel = min(0x7F, channel)
-    self.logger.info( "Writing %02x as the channel" % (channel) )
+    logging.info( "Writing %02x as the channel" % (channel) )
     self.writeRegister(Reg.RF_CH, channel)
 
     # Set up the speed
@@ -220,26 +212,26 @@ class Nrf():
     elif speed == 1: speedBits = 0 << Bits.RF_DR_LOW | 0 << Bits.RF_DR_HIGH
     else:            speedBits = 1 << Bits.RF_DR_LOW | 0 << Bits.RF_DR_HIGH
     rfSetup = speedBits | fullPowerBits
-    self.logger.info( "Writing %02x into RF_SETUP (%02x | %02x). Speed arg is %d" % (rfSetup, speedBits, fullPowerBits, speed) )
+    logging.info( "Writing %02x into RF_SETUP (%02x | %02x). Speed arg is %d" % (rfSetup, speedBits, fullPowerBits, speed) )
 
     self.writeRegister(Reg.RF_SETUP, rfSetup)
 
     # set up payload sizes
-    self.logger.info(recAddrPlsize)
+    logging.info(recAddrPlsize)
     if recAddrPlsize:
 
       # Convert recAddrPayload into a list
       self.recAddrPayload = recAddrPlsize[0:6] if isinstance(recAddrPlsize, list) else [recAddrPlsize]
 
       # Enable dynamic payload if necessary
-      self.logger.debug(self.recAddrPayload)
+      logging.debug(self.recAddrPayload)
       dynamicPayloadSizeBit = 1 if any([not pipe.payloadSize for pipe in self.recAddrPayload if pipe]) else 0
 
       featureValue = 0 \
         | (dynamicPayloadSizeBit << Bits.EN_DPL) \
         | (1<<Bits.EN_ACK_PAY)
 
-      self.logger.info( "Writing %02x into FEATURE" % (featureValue) )
+      logging.info( "Writing %02x into FEATURE" % (featureValue) )
       self.writeRegister(Reg.FEATURE, (featureValue))
 
       # Set payload sizes
@@ -248,10 +240,10 @@ class Nrf():
       dynamicPayloadSizePipes = 0
       for idx, pipe in enumerate(self.recAddrPayload):
         if pipe==None:
-          self.logger.debug("Pipe %d disabled" % (idx))
+          logging.debug("Pipe %d disabled" % (idx))
         else:
           # Enable pipe
-          self.logger.debug("Enabling pipe %d" % (idx))
+          logging.debug("Enabling pipe %d" % (idx))
           pipesEnableValue |= 1<<idx
 
           # Enable auto ack
@@ -259,30 +251,30 @@ class Nrf():
 
           # Set receive address
           if pipe.address:
-            self.logger.debug("Setting receive address for pipe %d to %s" % (idx, printBinary(pipe.address)))
+            logging.debug("Setting receive address for pipe %d to %s" % (idx, printBinary(pipe.address)))
             self.writeRegister(Reg.RX_ADDR_P0+idx, pipe.address)
           else:
-            self.logger.debug("Pipe address for this pipe remains default")
+            logging.debug("Pipe address for this pipe remains default")
 
           # Set payload size
           if pipe.payloadSize:
             writtenSize = max(1, min(pipe.payloadSize, 32))
-            self.logger.debug("Setting payload size %d for pipe %d" % (writtenSize, idx))
+            logging.debug("Setting payload size %d for pipe %d" % (writtenSize, idx))
             self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
           else:
-            self.logger.debug("Using dynamic payload size for pipe %d" % (idx))
+            logging.debug("Using dynamic payload size for pipe %d" % (idx))
             dynamicPayloadSizePipes |= 1<<idx
             writtenSize = 1
-            self.logger.debug("Writing %d to payload size register for pipe %d" % (writtenSize, idx))
+            logging.debug("Writing %d to payload size register for pipe %d" % (writtenSize, idx))
             self.writeRegister(Reg.RX_PW_P0+idx, writtenSize)
 
       # Write dynamic payload size
-      self.logger.debug( "Writing %02x into DYNPD" % (dynamicPayloadSizePipes) )
+      logging.debug( "Writing %02x into DYNPD" % (dynamicPayloadSizePipes) )
       self.writeRegister(Reg.DYNPD, dynamicPayloadSizePipes)
 
       # Write pipes enable
       pipesEnableValue = 3
-      self.logger.debug( "Writing %02x into EN_RXADDR" % (pipesEnableValue) )
+      logging.debug( "Writing %02x into EN_RXADDR" % (pipesEnableValue) )
       self.writeRegister(Reg.EN_RXADDR, pipesEnableValue)
 
       # Write auto-acking
@@ -371,7 +363,7 @@ class Nrf():
               payloadSizeCmdOut = self.command(Cmd.R_RX_PL_WID, 1)
               payloadSize = ord(payloadSizeCmdOut[0])
             if (payloadSize) > 32:
-              self.logger.error("Corrupt data in buffer, flushing")
+              logging.error("Corrupt data in buffer, flushing")
               # Corrupt packet due to data overflow
               self.command(Cmd.FLUSH_RX)
               return None
@@ -391,7 +383,7 @@ class Nrf():
           # No data available
           pass
       except Exception as e:
-        self.logger.error(str(e))
+        logging.error(str(e))
     else:
       raise Exception("self.recAddrPayload misconfigured. Cannot read")
 
@@ -420,7 +412,7 @@ class Nrf():
     self.writeRegister(Reg.RF_CH, channel)
 
   def queueAckPacket(self, pipeIndex, data):
-    self.logger.debug("Queueing ack packet payload on pipe %d" % (pipeIndex))
+    logging.debug("Queueing ack packet payload on pipe %d" % (pipeIndex))
     pipeIndex = min(pipeIndex, 5)
     dataList = data if hasattr(data, '__len__') else [data]
     try:

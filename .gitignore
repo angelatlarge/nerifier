@@ -2,3 +2,4 @@
 *.iml
 src/dist
 src/nerifier.egg-info
+venv

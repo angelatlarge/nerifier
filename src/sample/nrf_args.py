@@ -1,4 +1,4 @@
-from nrf24L01p import NrfPipe
+from nerifier import NrfPipe
 
 def addNrfArgs(parser):
   parser.add_argument('-c', '--channel', default=0x04)
