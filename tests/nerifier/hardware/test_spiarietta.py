@@ -8,8 +8,9 @@
 
 import unittest
 import ctypes
-import spi_intf_arietta
 from mock import MagicMock, call
+
+from nerifier.hardware.spi_arietta import SpiArietta
 
 
 class TestSpiIntfArietta(unittest.TestCase):
@@ -17,20 +18,20 @@ class TestSpiIntfArietta(unittest.TestCase):
   def setUp(self):
     self.mockSpibus = MagicMock()
     self.mockSpibus.read_buffer = ctypes.create_string_buffer(50)
-    self.spiIntfArietta = spi_intf_arietta.SpiIntfArietta(self.mockSpibus, 'J4.26')
+    self.spiArietta = SpiArietta(self.mockSpibus, 'J4.26')
 
   def testTransferOutOneScalar(self):
-    self.spiIntfArietta.transfer(chr(0x41), 0)
+    self.spiArietta.transfer(chr(0x41), 0)
     self.mockSpibus.write_buffer.__setitem__.assert_called_with(0, chr(0x41))
     self.mockSpibus.send.assert_called_with(1)
 
   def testTransferOutOneList(self):
-    self.spiIntfArietta.transfer("".join([chr(0x41)]), 0)
+    self.spiArietta.transfer("".join([chr(0x41)]), 0)
     self.mockSpibus.write_buffer.__setitem__.assert_called_with(0, chr(0x41))
     self.mockSpibus.send.assert_called_with(1)
 
   def testTransferOutTwo(self):
-    self.spiIntfArietta.transfer("".join([chr(0x41), chr(0x42)]), 0)
+    self.spiArietta.transfer("".join([chr(0x41), chr(0x42)]), 0)
     calls = [
       call(0, chr(0x41)),
       call(1, chr(0x42))
@@ -39,7 +40,7 @@ class TestSpiIntfArietta(unittest.TestCase):
     self.mockSpibus.send.assert_called_with(2)
 
   def testTransferOutString(self):
-    self.spiIntfArietta.transfer("AB")
+    self.spiArietta.transfer("AB")
     calls = [
       call(0, chr(0x41)),
       call(1, chr(0x42))
@@ -49,7 +50,7 @@ class TestSpiIntfArietta(unittest.TestCase):
 
   def testTransferOutOneScalarInOne(self):
     self.mockSpibus.read_buffer[0] = chr(0x43)
-    result = self.spiIntfArietta.transfer(chr(0x41), 1)
+    result = self.spiArietta.transfer(chr(0x41), 1)
     self.mockSpibus.write_buffer.__setitem__.called_with(0, chr(0x41))
     self.mockSpibus.send.assert_called_with(1)
     self.assertEquals(result, "".join([chr(0x43)]))
@@ -57,7 +58,7 @@ class TestSpiIntfArietta(unittest.TestCase):
   def testTransferOutOneScalarInTwo(self):
     self.mockSpibus.read_buffer[0] = chr(0x43)
     self.mockSpibus.read_buffer[1] = chr(0x44)
-    result = self.spiIntfArietta.transfer(chr(0x41), 2)
+    result = self.spiArietta.transfer(chr(0x41), 2)
     self.mockSpibus.write_buffer.__setitem__.called_with(0, chr(0x41))
     self.mockSpibus.send.assert_called_with(2)
     self.assertEquals(result, "".join([chr(0x43), chr(0x44)]))
@@ -65,7 +66,7 @@ class TestSpiIntfArietta(unittest.TestCase):
   def testTransferOutTwoInTwo(self):
     self.mockSpibus.read_buffer[0] = chr(0x43)
     self.mockSpibus.read_buffer[1] = chr(0x44)
-    result = self.spiIntfArietta.transfer("AB", 2)
+    result = self.spiArietta.transfer("AB", 2)
     calls = [
       call(0, chr(0x41)),
       call(1, chr(0x42))

@@ -6,8 +6,9 @@
     ./test_nrf24L01p.py
 """
 import unittest
-from nrf24L01p import Nrf
 from mock import MagicMock, ANY
+
+from nerifier import Nrf
 
 class ExactLengthMatcher(object):
   def __init__(self, expectedLength):

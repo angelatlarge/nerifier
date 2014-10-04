@@ -1,2 +1,4 @@
 *.pyc
 *.iml
+src/dist
+src/nerifier.egg-info

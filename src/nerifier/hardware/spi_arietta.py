@@ -1,5 +1,5 @@
 
-class SpiIntfArietta:
+class SpiArietta:
   def __init__(self, spiBus, cePin):
     self.spibus = spiBus
     self.cePin = cePin

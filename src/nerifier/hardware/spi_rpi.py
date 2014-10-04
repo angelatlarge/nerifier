@@ -1,4 +1,4 @@
-class SpiIntfRPi:
+class SpiRPi:
   def __init__(self, spi, GPIO, cePin = 25, irqPin = None):
     self.spi = spi
     self.spi.openSPI()
